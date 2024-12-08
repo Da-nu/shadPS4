@@ -5,6 +5,7 @@
 #include "common/logging/log.h"
 #include "common/scope_exit.h"
 #include "common/singleton.h"
+#include "common/alignment.h"
 #include "core/file_sys/fs.h"
 #include "core/libraries/kernel/file_system.h"
 #include "core/libraries/kernel/orbis_error.h"
@@ -348,6 +349,15 @@ s64 PS4_SYSV_ABI sceKernelRead(int d, void* buf, size_t nbytes) {
     }
 
     std::scoped_lock lk{file->m_mutex};
+
+    VAddr base = Common::AlignDown(VAddr(buf), 4_KB);
+    VAddr end = Common::AlignDown(VAddr(buf) + nbytes, 4_KB);
+    do {
+        volatile u8* ptr = reinterpret_cast<volatile u8*>(base);
+        *ptr = *ptr;
+        base += 4_KB;
+    } while (base <= end);
+
     if (file->type == Core::FileSys::FileType::Device) {
         return file->device->read(buf, nbytes);
     }
@@ -513,6 +523,14 @@ int PS4_SYSV_ABI sceKernelCheckReachability(const char* path) {
 }
 
 s64 PS4_SYSV_ABI sceKernelPreadv(int d, SceKernelIovec* iov, int iovcnt, s64 offset) {
+    VAddr base = Common::AlignDown(VAddr(iov->iov_base), 4_KB);
+    VAddr end = Common::AlignDown(VAddr(iov->iov_base) + iov->iov_len, 4_KB);
+    do {
+        u8* ptr = reinterpret_cast<u8*>(base);
+        *ptr = *ptr;
+        base += 4_KB;
+    } while (base <= end);
+
     if (d < 3) {
         return ORBIS_KERNEL_ERROR_EPERM;
     }
